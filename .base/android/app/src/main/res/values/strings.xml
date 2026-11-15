@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI Scanner Trading</string>
+    <string name="title_activity_main">AI Scanner Trading</string>
+    <string name="package_name">com.angga.aiscanner</string>
+    <string name="custom_url_scheme">com.angga.aiscanner</string>
+</resources>
