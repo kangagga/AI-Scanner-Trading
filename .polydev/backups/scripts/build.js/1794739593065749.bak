@@ -1,0 +1,87 @@
+/**
+ * Build step for the control center.
+ *
+ * This app is plain HTML/CSS/ES-modules — there is no bundler and no
+ * transpile step. "build" therefore only validates that every file the app
+ * needs at runtime exists and that no JS file has an obvious syntax error,
+ * then reports the file inventory. It is safe to run on any machine.
+ *
+ * For an Android APK, see docs/APK_BUILD.md (Capacitor wraps this folder).
+ */
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const ROOT = path.join(__dirname, '..');
+const PUBLIC = path.join(ROOT, 'public');
+
+const REQUIRED = [
+  'index.html',
+  'manifest.webmanifest',
+  'sw.js',
+  'css/app.css',
+  'js/app.js',
+  'js/core/api.js',
+  'js/core/store.js',
+  'js/core/format.js',
+  'js/core/demo.js',
+  'js/ui/shell.js',
+  'js/ui/components.js',
+  'js/ui/charts.js',
+];
+
+function listJs(dir, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) listJs(full, out);
+    else if (entry.name.endsWith('.js')) out.push(full);
+  }
+  return out;
+}
+
+let failed = 0;
+
+for (const rel of REQUIRED) {
+  const full = path.join(PUBLIC, rel);
+  if (!fs.existsSync(full)) {
+    console.error(`MISSING  ${rel}`);
+    failed += 1;
+  } else {
+    console.log(`ok       ${rel}`);
+  }
+}
+
+// Syntax-check every browser module without executing it.
+for (const file of listJs(PUBLIC)) {
+  const source = fs.readFileSync(file, 'utf8');
+  try {
+    new vm.SourceTextModule(source, { identifier: file });
+  } catch (err) {
+    if (String(err.message).includes('SourceTextModule is not a constructor')) {
+      // Node built without --experimental-vm-modules: fall back to a light check.
+      try {
+        // eslint-disable-next-line no-new-func
+        new Function(source.replace(/^\s*(import|export)\b.*$/gm, ''));
+      } catch (inner) {
+        console.error(`SYNTAX   ${path.relative(ROOT, file)}: ${inner.message}`);
+        failed += 1;
+      }
+    } else {
+      console.error(`SYNTAX   ${path.relative(ROOT, file)}: ${err.message}`);
+      failed += 1;
+    }
+  }
+}
+
+const jsFiles = listJs(PUBLIC);
+console.log(`\n${jsFiles.length} JS modules, ${REQUIRED.length} required assets checked.`);
+
+if (failed) {
+  console.error(`\nBUILD FAILED — ${failed} problem(s).`);
+  process.exit(1);
+}
+
+console.log('BUILD OK — static control center is complete and ready to serve.');
+console.log('Android APK: see docs/APK_BUILD.md (requires Android SDK + Gradle).');

@@ -1,0 +1,151 @@
+/** App chrome: top bar, bottom navigation, "More" sheet, toast host. */
+
+import { statusPill, escapeHtmlSafe } from './components.js';
+import { state, control, refreshAll, testConnection } from '../core/store.js';
+
+export const ROUTES = [
+  { id: 'dashboard', label: 'Dashboard', icon: '📊', nav: true },
+  { id: 'scanner', label: 'Live Scanner', icon: '📡', nav: true },
+  { id: 'signals', label: 'AI Signals', icon: '🤖', nav: true },
+  { id: 'paper', label: 'Paper Trading', icon: '📈', nav: true },
+  { id: 'market', label: 'Market Overview', icon: '🌐' },
+  { id: 'history', label: 'Trade History', icon: '🧾' },
+  { id: 'performance', label: 'Performance', icon: '🏆' },
+  { id: 'strategy', label: 'Strategy Settings', icon: '⚙️' },
+  { id: 'monitor', label: 'System Monitor', icon: '🩺' },
+  { id: 'settings', label: 'Settings', icon: '🔧' },
+];
+
+const NAV_ROUTES = ROUTES.filter((r) => r.nav);
+const MORE_ROUTES = ROUTES.filter((r) => !r.nav);
+
+export function routeMeta(id) {
+  return ROUTES.find((r) => r.id === id) || ROUTES[0];
+}
+
+export function renderTopbar(routeId) {
+  const meta = routeMeta(routeId);
+  const conn = state.connection?.state || 'OFFLINE';
+  const demo = Object.values(state.resources).some((r) => r?.demo);
+
+  return `<header class="topbar">
+    <div class="topbar__brand">
+      <div class="logo">AI</div>
+      <div style="min-width:0">
+        <div class="topbar__title">${escapeHtmlSafe(meta.label)}</div>
+        <div class="topbar__sub">Control Center</div>
+      </div>
+    </div>
+    <div class="topbar__actions">
+      ${statusPill(conn, { demo })}
+      <button class="icon-btn" data-action="refresh" aria-label="Refresh data" title="Refresh data">⟳</button>
+    </div>
+  </header>`;
+}
+
+export function renderBottomNav(routeId) {
+  const items = NAV_ROUTES.map((r) => {
+    const active = r.id === routeId;
+    return `<button class="nav-item${active ? ' nav-item--active' : ''}" data-route="${r.id}">
+      <span class="nav-item__icon">${r.icon}</span>
+      <span>${escapeHtmlSafe(r.label.split(' ')[0])}</span>
+    </button>`;
+  }).join('');
+
+  const moreActive = MORE_ROUTES.some((r) => r.id === routeId);
+  const more = `<button class="nav-item${moreActive ? ' nav-item--active' : ''}" data-action="open-more">
+    <span class="nav-item__icon">☰</span>
+    <span>More</span>
+  </button>`;
+
+  return `<nav class="bottom-nav">${items}${more}</nav>`;
+}
+
+export function renderMoreSheet(routeId) {
+  const items = MORE_ROUTES.map(
+    (r) => `<button class="sheet__item${r.id === routeId ? ' sheet__item--active' : ''}" data-route="${r.id}">
+      <span class="sheet__icon">${r.icon}</span>
+      <span>${escapeHtmlSafe(r.label)}</span>
+    </button>`
+  ).join('');
+
+  return `<div class="sheet-backdrop" data-action="close-more"></div>
+  <div class="sheet" role="dialog" aria-label="Menu lainnya">
+    <div class="sheet__grab"></div>
+    <div class="sheet__title">Menu Lainnya</div>
+    <div class="sheet__grid">${items}</div>
+  </div>`;
+}
+
+export function renderToast() {
+  const t = state.toast;
+  if (!t) return '';
+  const icon = t.kind === 'ok' ? '✅' : t.kind === 'warn' ? '⚠️' : t.kind === 'error' ? '⛔' : 'ℹ️';
+  return `<div class="toast-host"><div class="toast toast--${t.kind}">
+    <span>${icon}</span><span>${escapeHtmlSafe(t.message)}</span>
+  </div></div>`;
+}
+
+/**
+ * Control button row (START / STOP / RESTART / REFRESH).
+ * Buttons are disabled unless the backend is ONLINE — no fake toggles.
+ */
+export function renderControls({ compact = false } = {}) {
+  const online = state.connection?.state === 'ONLINE';
+  const pending = state.controls?.pending;
+  const disabled = !online || Boolean(pending);
+
+  const btn = (action, label, cls, icon) => {
+    const busy = pending === action;
+    return `<button class="btn ${cls}" data-control="${action}" ${disabled && !busy ? 'disabled' : ''}>
+      ${busy ? '<span class="btn__spinner"></span>' : icon}
+      <span>${label}</span>
+    </button>`;
+  };
+
+  const note = online
+    ? ''
+    : `<div class="stat__meta" style="margin-top:8px">Kontrol nonaktif: backend bot ${
+        state.connection?.state === 'OFFLINE' ? 'belum dikonfigurasi' : 'tidak terhubung'
+      }.</div>`;
+
+  return `<div>
+    <div class="btn-row btn-row--4">
+      ${btn('start', 'START', 'btn--primary', '▶')}
+      ${btn('stop', 'STOP', 'btn--danger', '■')}
+      ${btn('restart', 'RESTART', 'btn--warn', '⟲')}
+      ${btn('refresh', 'REFRESH', 'btn--ghost', '⟳')}
+    </div>
+    ${compact ? '' : note}
+  </div>`;
+}
+
+/** Bind global chrome events once. */
+export function bindShell({ onNavigate, onToggleMore }) {
+  document.addEventListener('click', (event) => {
+    const routeBtn = event.target.closest('[data-route]');
+    if (routeBtn) {
+      onNavigate(routeBtn.dataset.route);
+      return;
+    }
+
+    const controlBtn = event.target.closest('[data-control]');
+    if (controlBtn) {
+      const action = controlBtn.dataset.control;
+      if (action === 'refresh') {
+        refreshAll();
+      } else {
+        control(action);
+      }
+      return;
+    }
+
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (!action) return;
+
+    if (action === 'open-more') onToggleMore(true);
+    else if (action === 'close-more') onToggleMore(false);
+    else if (action === 'refresh') refreshAll();
+    else if (action === 'test-connection') testConnection();
+  });
+}

@@ -1,0 +1,9 @@
+{
+  "name": "aplikasi bot scaner",
+  "templateId": "empty",
+  "agent": {
+    "profile": "light",
+    "planApproval": true,
+    "askUser": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "ai-scanner-trading",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Scanner Trading — crypto market scanner, AI analyst & paper trading intelligence platform",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --experimental-sqlite server/index.js",
+    "dev": "node --experimental-sqlite server/index.js",
+    "build": "node scripts/build.js",
+    "smoke": "node --experimental-sqlite scripts/smoke.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
