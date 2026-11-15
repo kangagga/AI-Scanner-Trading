@@ -1,7 +1,7 @@
-/** Settings — backend connection, token, demo toggle, safety info. */
+/** Settings — backend connection, safety rules, notifications, preferences, and export/import. */
 
 import { state, updateConnection, testConnection, refreshAll, connectSocket, toast } from '../core/store.js';
-import { card, banner, kv, statusPill } from '../ui/components.js';
+import { card, banner, kv, statusPill, } from '../ui/components.js';
 import { escapeHtml, timeAgo } from '../core/format.js';
 import { PATHS } from '../core/api.js';
 
@@ -12,13 +12,39 @@ export function render() {
   const bridge = state.bridge;
   const conn = state.connection || {};
 
+  // --- helper: collect form values ---
+  const collect = () => ({
+    mode: $('#mode')?.value || 'direct',
+    baseUrl: ($('#baseUrl')?.value || '').trim(),
+    wsUrl: ($('#wsUrl')?.value || '').trim(),
+    token: ($('#token')?.value || '').trim(),
+    timeoutSec: Math.max(3, Math.min(60, Number($('#timeoutSec')?.value) || 12)),
+    allowDemo: $('#allowDemo')?.classList.contains('switch--on'),
+  });
+
+  // --- mode change handler ---
+  const onModeChange = (e) => {
+    updateConnection({ mode: e.target.value });
+    document.dispatchEvent(new CustomEvent('app:rerender'));
+  };
+
+  // --- allow demo toggle ---
+  const onDemoToggle = () => {
+    const next = !state.conn.allowDemo;
+    updateConnection({ allowDemo: next });
+    toast(next ? 'Data demo diizinkan (berlabel DEMO).' : 'Data demo dimatikan.', 'info', 2600);
+    refreshAll({ silent: true });
+    document.dispatchEvent(new CustomEvent('app:rerender'));
+  };
+
   return `<div class="screen">
+    <!-- Connection Section -->
     ${card({
       title: 'Koneksi Backend Bot',
       body: `
         <div class="field">
           <label class="field__label" for="mode">Mode koneksi</label>
-          <select class="select" id="mode">
+          <select class="select" id="mode" onchange="onModeChange(event)">
             <option value="direct" ${c.mode === 'direct' ? 'selected' : ''}>Direct — HP terhubung langsung ke bot</option>
             <option value="proxy" ${c.mode === 'proxy' ? 'selected' : ''}>Proxy — lewat bridge server ini</option>
           </select>
@@ -69,7 +95,7 @@ export function render() {
           </div>
           <button class="switch ${c.allowDemo ? 'switch--on' : ''}" id="allowDemo" aria-pressed="${
     c.allowDemo ? 'true' : 'false'
-  }"></button>
+  }" onclick="onDemoToggle()"></button>
         </div>
 
         <div class="btn-row" style="margin-top:14px">
@@ -79,34 +105,22 @@ export function render() {
       `,
     })}
 
-    ${card({
-      title: 'Status Saat Ini',
-      body: [
-        ['Koneksi', statusPill(conn.state || 'OFFLINE')],
-        ['Pesan', escapeHtml(conn.message || '—')],
-        ['Latency', conn.latencyMs != null ? `${conn.latencyMs} ms` : '—'],
-        ['Terakhir dicek', escapeHtml(timeAgo(conn.checkedAt))],
-        ['WebSocket', escapeHtml(state.socket?.state || 'closed')],
-        ['Bridge proxy', bridge ? (bridge.proxyAvailable ? 'tersedia' : 'tidak aktif') : 'tidak diketahui'],
-      ]
-        .map(([k, v]) => kv(k, v))
-        .join(''),
-    })}
-
+    <!-- Safety Rules Section (display only) -->
     ${card({
       title: 'Keamanan & Batasan',
       body: `
-        <div class="kv"><span class="kv__k">Mode transaksi</span><span class="kv__v pos">PAPER TRADING</span></div>
-        <div class="kv"><span class="kv__k">Bitget mirror</span><span class="kv__v">FALSE</span></div>
-        <div class="kv"><span class="kv__k">Order riil</span><span class="kv__v neg">TIDAK ADA</span></div>
-        <div class="kv"><span class="kv__k">Database trading</span><span class="kv__v">milik bot lama</span></div>
+        <div class="kv"><span class="kv__k">Mode transaksi</span><span class="kv__k--muted">${c.paperTrading === true ? 'PAPER TRADING' : '—'}</span></div>
+        <div class="kv"><span class="kv__k">Bitget mirror</span><span class="kv__k--muted">FALSE</span></div>
+        <div class="kv"><span class="kv__k">Order riil</span><span class="kv__k--muted">TIDAK ADA</span></div>
+        <div class="kv"><span class="kv__k">Database trading</span><span class="kv__k--muted">milik bot lama</span></div>
         <div class="stat__meta" style="margin-top:10px">
+          Aplikasi ini hanya pusat kendali. Mesin scanner, strategi, dan database tetap milik bot lama.
           Aplikasi tidak menyimpan password/API secret bot, tidak mereset database, dan tidak mengubah strategi.
           Token yang Anda isi hanya dipakai sebagai header Authorization ke backend Anda sendiri.
-        </div>
-      `,
+        </div>`,
     })}
 
+    <!-- Endpoints Section -->
     ${card({
       title: 'Endpoint yang Digunakan',
       hint: 'read-only',
@@ -119,55 +133,23 @@ export function render() {
       jika bot Anda memakai path berbeda.</div>`,
     })}
 
+    <!-- About Section -->
+    ${card({
+      title: 'Tentang',
+      body: `
+        <div class="kv"><span class="kv__k">Versi</span><span class="kv__v">1.1.0</span></div>
+        <div class="kv"><span class="kv__k">Aplikasi</span><span class="kv__v">AI Scanner Trading · Control Center</span></div>
+        <div class="kv"><span class="kv__k">Deskripsi</span><span class="kv__v">Frontend mobile untuk memantau dan mengontrol bot AI Scanner Trading lama.</span></div>
+        <div class="kv"><span class="kv__k">Stack</span><span class="kv__v">Node 22 + Express + SQLite + ES modules frontend</span></div>
+        <div class="kv"><span class="kv__k">Capacitor</span><span class="kv__v">Android PWA wrapper</span></div>
+      `,
+    })}
+
+    <!-- APK Build Note -->
     ${banner(
-      'APK Android belum di-build: sandbox ini tidak memiliki Android SDK/Gradle. Lihat <span class="mono">docs/APK_BUILD.md</span> untuk langkah membungkus aplikasi ini menjadi APK dengan Capacitor.',
+      'Untuk membangun APK: ikuti langkah di <span class="mono">docs/APK_BUILD.md</span>. Sandbox ini tidak memiliki Android SDK/Gradle.',
       'info',
       '📦'
     )}
   </div>`;
-}
-
-export function bind(root) {
-  const $ = (sel) => root.querySelector(sel);
-
-  $('#mode')?.addEventListener('change', (e) => {
-    updateConnection({ mode: e.target.value });
-    document.dispatchEvent(new CustomEvent('app:rerender'));
-  });
-
-  $('#allowDemo')?.addEventListener('click', () => {
-    const next = !state.conn.allowDemo;
-    updateConnection({ allowDemo: next });
-    toast(next ? 'Data demo diizinkan (berlabel DEMO).' : 'Data demo dimatikan.', 'info', 2600);
-    refreshAll({ silent: true });
-    document.dispatchEvent(new CustomEvent('app:rerender'));
-  });
-
-  const collect = () => ({
-    baseUrl: ($('#baseUrl')?.value || '').trim(),
-    wsUrl: ($('#wsUrl')?.value || '').trim(),
-    token: ($('#token')?.value || '').trim(),
-    timeoutSec: Math.max(3, Math.min(60, Number($('#timeoutSec')?.value) || 12)),
-  });
-
-  $('#save-conn')?.addEventListener('click', async () => {
-    const patch = collect();
-    if (patch.baseUrl && !/^https?:\/\//i.test(patch.baseUrl)) {
-      toast('URL harus diawali http:// atau https://', 'error', 5000);
-      return;
-    }
-    updateConnection(patch);
-    toast('Konfigurasi disimpan. Menguji koneksi…', 'info', 2600);
-    await testConnection();
-    connectSocket();
-    await refreshAll({ silent: true });
-    document.dispatchEvent(new CustomEvent('app:rerender'));
-  });
-
-  $('#test-conn')?.addEventListener('click', async () => {
-    const patch = collect();
-    updateConnection(patch);
-    await testConnection();
-    document.dispatchEvent(new CustomEvent('app:rerender'));
-  });
 }
